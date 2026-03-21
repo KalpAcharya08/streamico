@@ -1,0 +1,19 @@
+# Environment variables (NEVER commit secrets!)
+.env
+
+# Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Uploads & User generated content
+uploads/
+
+# IDE/OS files
+.idea/
+.vscode/
+.DS_Store
+tmp_*

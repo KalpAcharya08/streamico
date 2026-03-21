@@ -1,0 +1,44 @@
+# =============================================================================
+# 📖 LEARNING NOTES — Docker Compose
+# =============================================================================
+# Docker Compose lets you run multiple services (databases, caches, etc.)
+# with a single command: "docker-compose up -d"
+#
+# Common commands:
+#   docker-compose up -d          → Start all services in background
+#   docker-compose down           → Stop all services
+#   docker-compose down -v        → Stop AND delete all data (volumes)
+#   docker-compose ps             → Show running services
+#   docker-compose logs mysql     → View logs for a specific service
+# =============================================================================
+
+services:
+  # ─── MySQL Database ───────────────────────────────────────────────────
+  # MySQL is one of the most popular relational databases in the world.
+  # We use it to store users, videos, channels, etc.
+  mysql:
+    image: mysql:8.0                   # MySQL 8.0 (stable, widely used)
+    container_name: streaming-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootsecret  # Root password (for admin tasks)
+      MYSQL_DATABASE: streaming        # Creates this database automatically
+      MYSQL_USER: streaming            # Creates this user automatically
+      MYSQL_PASSWORD: secret           # Sets the user's password
+    ports:
+      - "3306:3306"                    # Access on localhost:3306
+    volumes:
+      - mysql_data:/var/lib/mysql      # Persist data across restarts
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+
+  # ─── Redis Cache (for future steps) ───────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: streaming-cache
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+# Named volumes
+volumes:
+  mysql_data:
