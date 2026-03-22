@@ -25,6 +25,9 @@ type Config struct {
 
 	// JWT settings (Step 4)
 	JWT JWTConfig
+
+	// Redis settings (Step 5)
+	Redis RedisConfig
 }
 
 // DatabaseConfig holds MySQL connection settings.
@@ -42,12 +45,24 @@ type JWTConfig struct {
 	TTL    time.Duration
 }
 
+// RedisConfig holds Redis connection settings.
+type RedisConfig struct {
+	Host     string
+	Port     string
+	Password string
+}
+
 
 // Load reads configuration from .env file and environment variables.
 func Load() (*Config, error) {
 	// Server defaults
 	viper.SetDefault("PORT", "8080")
 	viper.SetDefault("APP_ENV", "development")
+
+	// Redis defaults
+	viper.SetDefault("REDIS_HOST", "localhost")
+	viper.SetDefault("REDIS_PORT", "6379")
+	viper.SetDefault("REDIS_PASSWORD", "")
 
 	// Database defaults (match docker-compose.yml)
 	viper.SetDefault("DB_HOST", "localhost")
@@ -82,6 +97,11 @@ func Load() (*Config, error) {
 		JWT: JWTConfig{
 			Secret: viper.GetString("JWT_SECRET"),
 			TTL:    jwtTTL,
+		},
+		Redis: RedisConfig{
+			Host:     viper.GetString("REDIS_HOST"),
+			Port:     viper.GetString("REDIS_PORT"),
+			Password: viper.GetString("REDIS_PASSWORD"),
 		},
 	}, nil
 }

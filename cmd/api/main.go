@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"streaming-backend/internal/auth"
+	"streaming-backend/internal/common/cache"
 	"streaming-backend/internal/common/config"
 	"streaming-backend/internal/common/database"
 	"streaming-backend/internal/common/logger"
@@ -69,19 +70,34 @@ func main() {
 	}
 	defer db.Close()
 
+	// ─── Step C2: Connect to Redis ───────────────────────────────────────
+	redisClient, err := cache.NewRedisClient(context.Background(), cache.RedisConfig{
+		Host:     cfg.Redis.Host,
+		Port:     cfg.Redis.Port,
+		Password: cfg.Redis.Password,
+	}, log)
+	if err != nil {
+		log.Fatal("❌ failed to connect to redis", zap.Error(err))
+	}
+	defer redisClient.Close()
+
 	// ─── Step D: Create router & middleware ───────────────────────────────
 	r := chi.NewRouter()
 	r.Use(middleware.CORS())
 	r.Use(middleware.RequestLogger(log))
 
 	// ─── Step E: Initialize Services (Dependency Injection) ────────────────
+	
+	// Create caches
+	authCache := auth.NewCache(redisClient)
+
 	// Build the Auth chain: Repository -> Service -> Handler
 	authRepo := auth.NewRepository(db)
 	authService := auth.NewService(authRepo, cfg.JWT.Secret, cfg.JWT.TTL)
-	authHandler := auth.NewHandler(authService)
+	authHandler := auth.NewHandler(authService, authCache)
 
 	// Auth Middleware
-	authMiddle := auth.NewMiddleware(cfg.JWT.Secret)
+	authMiddle := auth.NewMiddleware(cfg.JWT.Secret, authCache)
 
 	// Build the User chain: Repository -> Service -> Handler
 	userRepo := user.NewRepository(db)
@@ -89,8 +105,9 @@ func main() {
 	userHandler := user.NewHandler(userService)
 
 	// Build the Video chain: Repository -> Service -> Handler
+	videoCache := video.NewCache(redisClient)
 	videoRepo := video.NewRepository(db)
-	videoService := video.NewService(videoRepo)
+	videoService := video.NewService(videoRepo, videoCache)
 	videoHandler := video.NewHandler(videoService)
 
 	// ─── Step F: Register routes ─────────────────────────────────────────
@@ -107,6 +124,9 @@ func main() {
 
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddle.RequireAuth)
+			
+			r.Post("/auth/logout", authHandler.Logout)
+			
 			r.Route("/users", func(r chi.Router) {
 				r.Get("/me", userHandler.GetMe)
 			})

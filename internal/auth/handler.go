@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 )
 
 // =============================================================================
@@ -15,11 +17,12 @@ import (
 
 type Handler struct {
 	service *Service
+	cache   *Cache
 }
 
 // NewHandler creates a new auth handler.
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, cache *Cache) *Handler {
+	return &Handler{service: service, cache: cache}
 }
 
 // Register handles POST /api/v1/auth/register
@@ -80,6 +83,32 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Send success response (200 OK)
 	writeJSON(w, http.StatusOK, result)
+}
+
+// Logout handles POST /api/v1/auth/logout
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		writeError(w, http.StatusBadRequest, "missing authorization header")
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		writeError(w, http.StatusBadRequest, "invalid authorization header")
+		return
+	}
+	tokenString := parts[1]
+
+	// Blacklist the token with a fixed TTL. 
+	// In a real scenario, use duration until the token actually expires.
+	err := h.cache.BlacklistToken(r.Context(), tokenString, 24*time.Hour)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to process logout")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "successfully logged out"})
 }
 
 // =============================================================================

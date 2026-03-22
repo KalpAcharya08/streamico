@@ -22,11 +22,12 @@ type UploadInput struct {
 }
 
 type Service struct {
-	repo *Repository
+	repo  *Repository
+	cache *Cache
 }
 
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo *Repository, cache *Cache) *Service {
+	return &Service{repo: repo, cache: cache}
 }
 
 // generateID creates a simple secure hex ID for videos instead of requiring google/uuid
@@ -87,11 +88,14 @@ func (s *Service) UploadVideo(ctx context.Context, input UploadInput) (*VideoRes
 		return nil, fmt.Errorf("failed to save video metadata: %w", err)
 	}
 
+	// 4.5 Invalidate the cache for this user since their video list changed
+	_ = s.cache.InvalidateUserVideos(ctx, video.UserID)
+
 	// 5. Start background transcoding job (Simulated)
 	// VERY IMPORTANT INTERN LESSON: 
 	// We pass context.Background() because the original `ctx` will be cancelled the moment 
 	// we send the HTTP Response! The goroutine needs a clear context to keep running.
-	go s.processVideo(context.Background(), video.ID, savePath)
+	go s.processVideo(context.Background(), video.ID, video.UserID, savePath)
 
 	// 6. Return safe response immediately!
 	resp := &VideoResponse{
@@ -107,7 +111,7 @@ func (s *Service) UploadVideo(ctx context.Context, input UploadInput) (*VideoRes
 }
 
 // processVideo transcodes the video into HLS chunks and an m3u8 playlist using FFmpeg.
-func (s *Service) processVideo(ctx context.Context, videoID string, rawFilePath string) {
+func (s *Service) processVideo(ctx context.Context, videoID string, userID string, rawFilePath string) {
 	fmt.Printf("🎬 [FFMPEG WORKER] Starting HLS Transcoding for video %s...\n", videoID)
 	
 	// 1. Create a dedicated directory for the HLS files
@@ -150,6 +154,9 @@ func (s *Service) processVideo(ctx context.Context, videoID string, rawFilePath 
 		fmt.Printf("❌ [FFMPEG WORKER] Failed to update video status in DB: %v\n", err)
 	}
 
+	// INVALIDATE CACHE once ready
+	_ = s.cache.InvalidateUserVideos(ctx, userID)
+
 	// 5. Cleanup: Delete the huge initial .mp4 file to save space on the server disk
 	os.Remove(rawFilePath)
 
@@ -157,22 +164,37 @@ func (s *Service) processVideo(ctx context.Context, videoID string, rawFilePath 
 }
 
 func (s *Service) GetVideo(ctx context.Context, id string) (*VideoResponse, error) {
+	// Try cache first
+	if cached, err := s.cache.GetVideo(ctx, id); err == nil {
+		return cached, nil
+	}
+
 	v, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	
-	return &VideoResponse{
+	resp := &VideoResponse{
 		ID:          v.ID,
 		UserID:      v.UserID,
 		Title:       v.Title,
 		Description: v.Description,
 		Status:      string(v.Status),
 		CreatedAt:   v.CreatedAt,
-	}, nil
+	}
+
+	// Cache the result for future calls
+	_ = s.cache.SetVideo(ctx, resp, 5*time.Minute)
+
+	return resp, nil
 }
 
 func (s *Service) ListUserVideos(ctx context.Context, userID string) ([]*VideoResponse, error) {
+	// Try Cache First
+	if cached, err := s.cache.GetUserVideos(ctx, userID); err == nil {
+		return cached, nil
+	}
+
 	videos, err := s.repo.ListByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -189,5 +211,9 @@ func (s *Service) ListUserVideos(ctx context.Context, userID string) ([]*VideoRe
 			CreatedAt:   v.CreatedAt,
 		})
 	}
+
+	// Cache the result for 5 minutes
+	_ = s.cache.SetUserVideos(ctx, userID, responses, 5*time.Minute)
+
 	return responses, nil
 }

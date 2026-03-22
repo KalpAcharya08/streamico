@@ -19,11 +19,12 @@ const (
 // Middleware struct holds dependencies needed by our middleware functions.
 type Middleware struct {
 	jwtSecret string
+	cache     *Cache
 }
 
 // NewMiddleware creates a new auth middleware instance.
-func NewMiddleware(jwtSecret string) *Middleware {
-	return &Middleware{jwtSecret: jwtSecret}
+func NewMiddleware(jwtSecret string, cache *Cache) *Middleware {
+	return &Middleware{jwtSecret: jwtSecret, cache: cache}
 }
 
 // RequireAuth is a Chi middleware that enforces a valid JWT token.
@@ -48,6 +49,17 @@ func (m *Middleware) RequireAuth(next http.Handler) http.Handler {
 		claims, err := jwt.ValidateToken(tokenString, m.jwtSecret)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "invalid or expired token")
+			return
+		}
+
+		// 3.5 Check blacklisting
+		isBlacklisted, err := m.cache.IsBlacklisted(r.Context(), tokenString)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to verify token session")
+			return
+		}
+		if isBlacklisted {
+			writeError(w, http.StatusUnauthorized, "token is invalid/logged out")
 			return
 		}
 
