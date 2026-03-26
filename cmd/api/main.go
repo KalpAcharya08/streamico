@@ -107,7 +107,7 @@ func main() {
 	// Build the Video chain: Repository -> Service -> Handler
 	videoCache := video.NewCache(redisClient)
 	videoRepo := video.NewRepository(db)
-	videoService := video.NewService(videoRepo, videoCache)
+	videoService := video.NewService(videoRepo, videoCache, cfg.PexelsAPIKey)
 	videoHandler := video.NewHandler(videoService)
 
 	// ─── Step F: Register routes ─────────────────────────────────────────
@@ -133,6 +133,7 @@ func main() {
 			r.Route("/videos", func(r chi.Router) {
 				r.Post("/", videoHandler.UploadVideo)
 				r.Get("/", videoHandler.ListUserVideos)
+				r.Get("/explore", videoHandler.ExploreVideos)
 				r.Get("/{id}", videoHandler.GetVideo)
 			})
 		})

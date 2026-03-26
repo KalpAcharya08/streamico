@@ -22,12 +22,13 @@ type UploadInput struct {
 }
 
 type Service struct {
-	repo  *Repository
-	cache *Cache
+	repo         *Repository
+	cache        *Cache
+	pexelsAPIKey string
 }
 
-func NewService(repo *Repository, cache *Cache) *Service {
-	return &Service{repo: repo, cache: cache}
+func NewService(repo *Repository, cache *Cache, pexelsAPIKey string) *Service {
+	return &Service{repo: repo, cache: cache, pexelsAPIKey: pexelsAPIKey}
 }
 
 // generateID creates a simple secure hex ID for videos instead of requiring google/uuid
@@ -216,4 +217,49 @@ func (s *Service) ListUserVideos(ctx context.Context, userID string) ([]*VideoRe
 	_ = s.cache.SetUserVideos(ctx, userID, responses, 5*time.Minute)
 
 	return responses, nil
+}
+
+// ExploreVideoResponse represents a universally playable video format mapped from outside sources
+type ExploreVideoResponse struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Author       string `json:"author"`
+	ThumbnailURL string `json:"thumbnail_url"`
+	VideoURL     string `json:"video_url"`
+	Duration     int    `json:"duration"`
+}
+
+// ExploreVideos searches Pexels for stock videos and maps them cleanly to the API
+func (s *Service) ExploreVideos(ctx context.Context, query string) ([]ExploreVideoResponse, error) {
+	// 1. Fetch from Pexels
+	pexelsData, err := FetchStockVideos(s.pexelsAPIKey, query)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Map to our unified response
+	var results []ExploreVideoResponse
+	for _, raw := range pexelsData.Videos {
+		// Find the best HD mp4 video link
+		videoLink := ""
+		for _, file := range raw.VideoFiles {
+			if file.FileType == "video/mp4" {
+				videoLink = file.Link
+				if file.Quality == "hd" {
+					break // Prefer HD
+				}
+			}
+		}
+
+		results = append(results, ExploreVideoResponse{
+			ID:           fmt.Sprintf("pexels-%d", raw.ID),
+			Title:        "Stock Video by " + raw.User.Name,
+			Author:       raw.User.Name,
+			ThumbnailURL: raw.Image,
+			VideoURL:     videoLink,
+			Duration:     raw.Duration,
+		})
+	}
+
+	return results, nil
 }

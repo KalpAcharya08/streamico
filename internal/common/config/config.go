@@ -28,6 +28,9 @@ type Config struct {
 
 	// Redis settings (Step 5)
 	Redis RedisConfig
+
+	// External APIs
+	PexelsAPIKey string // PEXELS_API_KEY
 }
 
 // DatabaseConfig holds MySQL connection settings.
@@ -103,5 +106,6 @@ func Load() (*Config, error) {
 			Port:     viper.GetString("REDIS_PORT"),
 			Password: viper.GetString("REDIS_PASSWORD"),
 		},
+		PexelsAPIKey: viper.GetString("PEXELS_API_KEY"),
 	}, nil
 }

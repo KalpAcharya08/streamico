@@ -99,6 +99,19 @@ func (h *Handler) ListUserVideos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, videos)
 }
 
+// ExploreVideos handles GET /api/v1/videos/explore
+func (h *Handler) ExploreVideos(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	
+	videos, err := h.service.ExploreVideos(r.Context(), query)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch explore videos: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, videos)
+}
+
 // --- HTTP Helpers ---
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	jsonBytes, _ := json.MarshalIndent(data, "", "  ")
